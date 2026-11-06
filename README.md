@@ -59,8 +59,8 @@ Ensuite, dans VS Code, ouvrir un notebook et sélectionner le kernel `.venv` en 
 - [x] Valeurs manquantes et doublons
 - [x] Détection des valeurs aberrantes (méthode IQR)
 - [x] Décision sur les valeurs aberrantes
-- [ ] Encodage de `Type` et création de la cible binaire (Victor)
-- [ ] Analyse exploratoire : distributions, boxplots, corrélations (victor)
+- [x] Encodage de `Type` et création de la cible binaire
+- [x] Analyse exploratoire : distributions, boxplots, corrélations
 - [ ] Sélection de variables (victor)
 - [ ] Modélisation (5 modèles) et évaluation
 - [ ] Optimisation des hyperparamètres (Grid Search / Random Search)
