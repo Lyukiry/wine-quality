@@ -61,52 +61,68 @@ Ensuite, dans VS Code, ouvrir un notebook et sélectionner le kernel `.venv` en 
 - [x] Décision sur les valeurs aberrantes
 - [x] Encodage de `Type` et création de la cible binaire
 - [x] Analyse exploratoire : distributions, boxplots, corrélations
-- [ ] Sélection de variables (victor)
-- [ ] Modélisation (5 modèles) et évaluation
-- [ ] Optimisation des hyperparamètres (Grid Search / Random Search)
+- [x] Sélection de variables (victor)
+- [x] Modélisation (5 modèles) et évaluation
+- [x] Optimisation des hyperparamètres (Grid Search / Random Search)
 - [ ] Rapport technique
+- [ ] Bonus : tests unitaires, Docker, application web
 
-## Résultats du prétraitement
-
-### Statistiques descriptives
-
-- **6 497 vins** au total, 12 colonnes numériques + `Type`.
-- **Échelles très hétérogènes** : la densité varie de 0,987 à 1,039, le SO₂ total de 6 à 440. Il faudra standardiser les données pour les modèles qui reposent sur des distances (k-NN, SVM) ou sur une régularisation (régression logistique).
-- Pour plusieurs variables, le **maximum est très éloigné du 3ᵉ quartile** (sucre résiduel, SO₂ libre, chlorures, sulfates), ce qui signale des valeurs extrêmes et des distributions asymétriques.
-
-### Valeurs manquantes
-
-Aucune valeur manquante.
-
-### Doublons
-
-**1 177 doublons exacts** (18 % des lignes) ont été **supprimés**. Il reste **5 320 vins**.
-
-Raison : si une même observation se retrouve à la fois dans le jeu d'entraînement et dans le jeu de test, le modèle la « reconnaît » et le score de test est artificiellement gonflé (**fuite de données**). La suppression est faite **avant** le découpage train/test.
-
-### Valeurs aberrantes (méthode IQR)
-
-Une valeur est considérée comme aberrante si elle sort de l'intervalle [Q1 − 1,5 × IQR ; Q3 + 1,5 × IQR], avec IQR = Q3 − Q1.
-
-| Variable | Outliers | % |
-|---|---|---|
-| fixed acidity | 304 | 5,71 |
-| volatile acidity | 279 | 5,24 |
-| chlorides | 237 | 4,45 |
-| sulphates | 163 | 3,06 |
-| citric acid | 143 | 2,69 |
-| residual sugar | 141 | 2,65 |
-| pH | 49 | 0,92 |
-| free sulfur dioxide | 44 | 0,83 |
-| total sulfur dioxide | 10 | 0,19 |
-| density | 3 | 0,06 |
-| alcohol | 1 | 0,02 |
-
-- Au plus **5,7 % d'outliers par variable**, mais **1 094 lignes (20,6 %)** ont au moins une valeur aberrante sur l'une des 11 variables.
-- **Aucune valeur physiquement impossible** : ce sont des vins réels qui sortent de l'ordinaire (vins moelleux, rouges très acides…), pas des erreurs de mesure.
-- **Le statut d'outlier dépend du groupe de référence.** En calculant les bornes séparément pour les rouges et les blancs, le nombre d'outliers diminue pour l'acidité fixe (304 → 147) et l'acidité volatile (279 → 152), mais augmente pour d'autres variables (SO₂ total : 10 → 59, densité : 3 → 41). Le seuil IQR est une convention, pas une preuve d'erreur.
-
-**Décision** : aucune supressions des valeurs aberantes car la perte de donner est trop important, 26% du data set.
+## Résumé de la démarche
+ 
+### 1. Prétraitement
+ 
+- **6 497 vins**, aucune valeur manquante.
+- **1 177 doublons exacts** (18 %) supprimés pour éviter une **fuite de données** entre train et test. Il reste **5 320 vins**.
+- **Valeurs aberrantes** (méthode IQR) : au plus 5,7 % par variable, mais 20,6 % des vins en ont au moins une. **Nous les conservons** : aucune valeur n'est physiquement impossible (vins moelleux, rouges très acides…), et les supprimer ferait perdre un cinquième des données, dont une partie des bons vins.
+- **Encodage** : `Type` → `Type_encoded` (0 = rouge, 1 = blanc) ; cible `quality_binary` = 1 si `quality` ≥ 7.
+- **Déséquilibre** : 19 % de bons vins. Un modèle qui répondrait toujours « mauvais » aurait 81 % d'accuracy : on évalue donc surtout avec le **F1** et l'**AUC**, avec un découpage et une validation croisée **stratifiés**.
+- **Découpage** : 80 % entraînement (4 256 vins), 20 % test (1 064 vins). Le test n'est utilisé qu'une seule fois, à la fin.
+### 2. Analyse exploratoire
+ 
+- Variables les plus liées à la qualité : **alcohol** (+0,47), **density** (−0,33), **volatile acidity** (−0,27), **chlorides** (−0,20).
+- Paires redondantes : SO₂ libre / SO₂ total (+0,72), density / alcohol (−0,67), density / residual sugar (+0,52).
+### 3. Sélection de variables
+ 
+Trois familles de méthodes : **filtre** (corrélation, information mutuelle), **wrapper** (RFECV) et **embarquée** (Lasso, Ridge).
+ 
+**10 variables retenues sur 12** : on retire `citric acid` et `Type_encoded`, les plus faibles selon la synthèse des méthodes. Leur retrait ne dégrade pas les meilleurs modèles. Un sous-ensemble plus réduit (3 variables, Lasso) convenait à la régression logistique mais dégradait fortement les modèles non linéaires.
+ 
+### 4. Modélisation et évaluation (validation croisée 5-fold)
+ 
+| Modèle | F1 | AUC | Diagnostic |
+|---|---|---|---|
+| SVM (RBF) | 0,543 | 0,841 | Bon compromis biais/variance |
+| Régression logistique | 0,533 | 0,831 | Stable, léger biais (frontière linéaire) |
+| Naive Bayes | 0,497 | 0,785 | Biais : hypothèse d'indépendance violée |
+| k-NN | 0,436 | 0,783 | Variance, faible rappel |
+| Arbre de décision | 0,421 | 0,642 | Sur-apprentissage massif (F1 train = 1,0) |
+ 
+*Paramètres par défaut.*
+ 
+### 5. Optimisation
+ 
+- **Grid Search** et **Random Search** donnent des scores équivalents (écarts < 0,007).
+- Gain principal pour l'**arbre** (F1 0,421 → 0,513) : limiter la taille des feuilles corrige son sur-apprentissage.
+- Le Random Search est plus économe quand l'espace de recherche est grand (arbre : même score avec 20 combinaisons au lieu de 60).
+### 6. Modèle final : régression logistique
+ 
+Choisie car **statistiquement équivalente au SVM** (écart de F1 ≈ 0,005, inférieur à la variation entre plis), mais plus **simple**, **interprétable** et **rapide**, avec des probabilités directes.
+ 
+| Jeu de test | Précision | Rappel | F1 |
+|---|---|---|---|
+| Bons vins (202) | 0,394 | 0,792 | 0,526 |
+| Mauvais vins (862) | 0,936 | 0,715 | 0,811 |
+ 
+Accuracy 0,729 · AUC 0,82.
+ 
+- Le modèle **généralise bien** : F1 de 0,539 en validation croisée contre 0,526 sur le test.
+- Il est fiable pour **écarter les mauvais vins** (94 % de bonnes réponses quand il dit « mauvais »), moins pour certifier les bons (39 %).
+- **Variables déterminantes** : l'alcool (effet positif le plus fort), la densité et l'acidité volatile (effets négatifs).
+**Limites** : note sensorielle subjective, informations absentes (cépage, millésime), seuil ≥ 7 arbitraire.
+**Pistes** : ajustement du seuil de décision, méthodes d'ensemble (Random Forest, AdaBoost).
+ 
+Le détail de chaque étape est dans le **rapport technique**.
+ 
 
 ## Travail en équipe
 
